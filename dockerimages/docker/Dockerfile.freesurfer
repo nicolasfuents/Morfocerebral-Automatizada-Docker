@@ -1,0 +1,133 @@
+# Imagen base de FreeSurfer
+FROM freesurfer/freesurfer:7.4.1
+
+# Configurar UTF-8 como codificación por defecto
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+
+# Copiar la licencia de FreeSurfer
+COPY license.txt /usr/local/freesurfer/.license
+
+# Configurar entorno no interactivo
+ENV FREESURFER_HOME=/usr/local/freesurfer
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Redirigir los repositorios a CentOS Vault debido a la descontinuación de CentOS 8
+RUN sed -i 's|mirrorlist=|#mirrorlist=|g' /etc/yum.repos.d/CentOS-*.repo && \
+    sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*.repo && \
+    yum clean all && \
+    yum makecache
+
+# Habilitar EPEL y PowerTools
+RUN yum install -y epel-release && \
+    yum install -y 'dnf-command(config-manager)' && \
+    dnf config-manager --set-enabled powertools || dnf config-manager --set-enabled PowerTools && \
+    yum makecache
+
+    # Configuración de entorno para Freeview y Qt
+ENV DISPLAY=:99
+ENV XDG_RUNTIME_DIR=/tmp/runtime-root
+ENV QT_QPA_PLATFORM=xcb
+ENV QT_PLUGIN_PATH=/usr/lib/x86_64-linux-gnu/qt5/plugins
+
+
+# Instalar herramientas del sistema
+RUN yum update -y && \
+    yum install -y wget curl tcsh python3 python3-pip unzip git gcc gcc-c++ make cmake \
+    libstdc++-static xpra xorg-x11-server-Xvfb xorg-x11-apps openbox ImageMagick xdotool mesa-libGL mesa-libGLU wmctrl libXrender \
+    libXtst libXcomposite libXScrnSaver libXi libXrandr libXfixes libXdamage alsa-lib xorg-x11-utils\
+    at-spi2-core gtk3 dbus-glib dbus-x11 libcurl openssl ca-certificates && \
+    yum clean all && rm -rf /var/cache/yum
+  
+
+
+# Instalar dcm2niix para convertir DICOM a NIfTI
+RUN yum install -y cmake gcc-c++ git && \
+    git clone https://github.com/rordenlab/dcm2niix.git /tmp/dcm2niix && \
+    cd /tmp/dcm2niix && mkdir build && cd build && \
+    cmake .. && make && make install && \
+    rm -rf /tmp/dcm2niix
+
+    # Instalar dependencias para Freeview
+RUN yum install -y \
+qt5-qtbase \
+qt5-qtsvg \
+qt5-qttools \
+qt5-qtwebkit \
+qt5-qtdeclarative \
+libGLU \
+mesa-dri-drivers \
+libglvnd-glx \
+libXft \
+fontconfig \
+libxcb \
+&& yum clean all && rm -rf /var/cache/yum
+
+# Instalar headers de desarrollo de Python
+RUN yum install -y python3-devel
+
+# Instalar Miniconda
+RUN wget -O /tmp/miniconda.sh https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh && \
+    bash /tmp/miniconda.sh -b -p /opt/conda && \
+    rm /tmp/miniconda.sh && \
+    /opt/conda/bin/conda init
+
+# Agregar Conda al PATH
+ENV PATH="/opt/conda/bin:$PATH"
+
+# Crear entorno de FreeSurfer
+RUN /opt/conda/bin/conda create -y -n freesurfer_env python=3.9 
+
+# Activar el entorno fsl_env por defecto en el contenedor
+RUN echo "source activate freesurfer_env" >> /root/.bashrc
+
+# ==========================
+# Instalación de dependencias de Python en fsl_env
+# ==========================
+COPY requirements_freesurfer.txt /app/requirements_freesurfer.txt
+
+# Crear directorio de trabajo para la aplicación
+WORKDIR /app
+
+# Copiar los scripts al contenedor
+COPY . /app
+
+#Instalación de dependencias de Python en freesurfer_env
+RUN /opt/conda/bin/conda run -n freesurfer_env pip install --upgrade pip
+
+# Instalar dependencias necesarias y herramientas de compilación
+RUN /opt/conda/bin/conda run -n freesurfer_env pip install --no-cache-dir --upgrade \
+    "nibabel>=3.2,<5.0" \
+    "nilearn" \
+    "pydicom" \
+    "opencv-python" \
+    "scikit-build" \
+    "openpyxl" \
+    "cmake" \
+    "setuptools_scm"
+    
+# Instalar dependencias de Python desde requirements.txt
+RUN /opt/conda/bin/conda run -n freesurfer_env python -m pip install --no-cache-dir --upgrade -r requirements_freesurfer.txt
+
+
+# Instalar Google Chrome para Selenium
+# Descargar e instalar Google Chrome 114
+#RUN wget -O /tmp/google-chrome-stable-114.0.5735.90-1.x86_64.rpm "https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm" && \
+#    yum install -y /tmp/google-chrome-stable-114.0.5735.90-1.x86_64.rpm && \
+#    rm /tmp/google-chrome-stable-114.0.5735.90-1.x86_64.rpm && \
+#    yum clean all && rm -rf /var/cache/yum
+#
+# Descargar e instalar ChromeDriver 114
+#RUN wget -O /tmp/chromedriver.zip "https://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriver_linux64.zip" && \
+#    unzip /tmp/chromedriver.zip -d /usr/local/bin/ && \
+#    rm /tmp/chromedriver.zip && \
+#    chmod +x /usr/local/bin/chromedriver
+#
+# Establecer PATH para Selenium y ChromeDriver
+#ENV PATH=$PATH:/usr/local/bin/chromedriver
+
+# Configurar FreeSurfer en el entorno
+RUN echo "source $FREESURFER_HOME/SetUpFreeSurfer.sh" >> ~/.bashrc
+
+# Comando por defecto
+CMD ["python3", "main.py"]

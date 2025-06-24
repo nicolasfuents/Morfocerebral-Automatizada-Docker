@@ -1,0 +1,143 @@
+#!/bin/bash
+# Script para procesar imágenes T1 y obtener métricas morfovolumétricas de manera autiomatizada
+
+pkill -f "parallel -j 2 --lb procesar_paciente"
+pkill -f "recon-all"
+
+WATCH_DIR="/home/nz8/volu_morfo/data/inputs"  # Directorio donde se monitorean los archivos nuevos
+OUTPUT_ROOT="/home/nz8/volu_morfo/data/outputs" # Directorio donde se guardan los resultados procesados
+QUEUE_FILE="/tmp/job_queue/files_to_process.txt" # Archivo de cola para los archivos a procesar
+
+mkdir -p "$(dirname "$QUEUE_FILE")"
+touch "$QUEUE_FILE"
+> "$QUEUE_FILE"
+
+wait_until_complete() {
+    local file="$1"
+    echo "Esperando a que $file finalice escritura..."
+    local prev_size=0
+    while true; do
+        sleep 5
+        size=$(stat -c%s "$file" 2>/dev/null || echo 0)
+        if [[ "$size" -eq "$prev_size" ]]; then
+            break
+        fi
+        prev_size=$size
+    done
+    echo "Archivo estable: $file"
+}
+
+procesar_paciente() {
+    local FILE="$1"
+    echo "Procesando archivo: $FILE"
+
+    if [[ -f "$FILE" && "$FILE" == *.zip ]]; then
+        wait_until_complete "$FILE"
+        echo "Archivo ZIP detectado."
+
+        TMP_UNZIP_DIR="${FILE%.zip}_temp"
+        unzip -o "$FILE" -d "$TMP_UNZIP_DIR"
+        DICOM_DIR=$(find "$TMP_UNZIP_DIR" -type f -name "*.dcm" -exec dirname {} \; | head -n 1)
+
+        NOMBRE_PACIENTE=$(docker run --rm \
+            -v "$DICOM_DIR":/data/dicom:ro \
+            morfocerebral:freesurfer bash -c '
+                source /opt/conda/etc/profile.d/conda.sh && \
+                conda run -n freesurfer_env python /app/extract_patient_name.py /data/dicom')
+
+        PACIENTE_DIR="$OUTPUT_ROOT/$NOMBRE_PACIENTE"
+        mkdir -p "$PACIENTE_DIR/dicom"
+        cp -r "$TMP_UNZIP_DIR"/* "$PACIENTE_DIR/dicom/"
+        rm -rf "$TMP_UNZIP_DIR"
+
+    elif [[ -d "$FILE" ]]; then
+        echo "Directorio DICOM detectado."
+        DICOM_DIR="$FILE"
+        if find "$DICOM_DIR" -type d -name "FreeSurfer" | grep -q .; then
+            echo "Ya contiene resultados de FreeSurfer. Ignorando."
+            return
+        fi
+
+        NOMBRE_PACIENTE=$(docker run --rm \
+            -v "$DICOM_DIR":/data/dicom:ro \
+            morfocerebral:freesurfer bash -c '
+                source /opt/conda/etc/profile.d/conda.sh && \
+                conda run -n freesurfer_env python /app/extract_patient_name.py /data/dicom')
+
+        PACIENTE_DIR="$OUTPUT_ROOT/$NOMBRE_PACIENTE"
+        mkdir -p "$PACIENTE_DIR/dicom"
+        cp -r "$DICOM_DIR"/* "$PACIENTE_DIR/dicom/"
+    else
+        echo "Formato no reconocido. Ignorando."
+        return
+    fi
+
+    echo "Esperando 10 segundos antes de iniciar el procesamiento..."
+    sleep 10
+
+    CONTAINER_NAME="fs_paciente_${NOMBRE_PACIENTE//[^a-zA-Z0-9]/_}"
+    LOG_PATH="$PACIENTE_DIR/freesurfer_log.txt"
+
+    echo "Iniciando procesamiento con FreeSurfer... (contenedor: $CONTAINER_NAME)"
+    docker run -d --name "$CONTAINER_NAME" \
+        -v "$PACIENTE_DIR":/data/paciente:rw \
+        morfocerebral:freesurfer \
+        bash -c '
+            source /usr/local/freesurfer/SetUpFreeSurfer.sh && \
+            source /opt/conda/etc/profile.d/conda.sh && \
+            conda activate freesurfer_env && \
+            export PYTHONUNBUFFERED=1 && \
+            python /app/main_freesurfer.py "/data/paciente/dicom"
+        '
+
+    echo "Esperando a que finalice el contenedor $CONTAINER_NAME..."
+    docker wait "$CONTAINER_NAME"
+
+    docker logs "$CONTAINER_NAME" >> "$LOG_PATH" 2>&1
+    docker rm "$CONTAINER_NAME"
+
+    echo "FreeSurfer completado."
+    SUBJECTS_DIR=$(grep "SUBJECTS_DIR configurado en:" "$PACIENTE_DIR/dicom/logs_FS_recon_all/log.txt" | awk '{print $4}')
+    echo "SUBJECTS_DIR obtenido: $SUBJECTS_DIR"
+
+    echo "Iniciando procesamiento con FSL..."
+    LOG_FSL="$PACIENTE_DIR/fsl_log.txt"
+
+    docker run --rm \
+        -v "$PACIENTE_DIR":/data/paciente:rw \
+        morfocerebral:fsl bash -c '
+            source /opt/conda/etc/profile.d/conda.sh && conda activate fsl_env && \
+            python3 /app/main_fsl.py --skip_fs --dicom_dir /data/paciente/dicom' \
+        2>&1 | tee "$LOG_FSL"
+
+    echo "Verificando si se generó el reporte PDF..."
+    if [[ -f "$PACIENTE_DIR/dicom/FreeSurfer/stats/Reporte_morf.pdf" ]]; then
+        echo "Reporte generado correctamente para $NOMBRE_PACIENTE"
+    else
+        echo "Reporte NO generado para $NOMBRE_PACIENTE"
+    fi
+
+    if [[ -f "$FILE" && "$FILE" == *.zip ]]; then
+        echo "Eliminando archivo ZIP original: $FILE"
+        rm -f "$FILE"
+    fi
+
+    echo "Procesamiento completo para $NOMBRE_PACIENTE"
+}
+
+export -f procesar_paciente
+export -f wait_until_complete
+export OUTPUT_ROOT
+
+tail -n +1 -f "$QUEUE_FILE" | parallel -j 2 --line-buffer procesar_paciente {} &
+
+inotifywait -m -e close_write,moved_to --format '%w%f' "$WATCH_DIR" | while read NEWFILE; do
+    BASENAME=$(basename "$NEWFILE")
+    if [[ "$BASENAME" == *_temp || "$BASENAME" == .* || "$BASENAME" == *~ ]]; then
+        echo "Ignorado archivo temporal o incompleto: $NEWFILE"
+        continue
+    fi
+
+    echo "Detectado nuevo archivo finalizado: $NEWFILE"
+    echo "$NEWFILE" >> "$QUEUE_FILE"
+done

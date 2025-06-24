@@ -1,0 +1,117 @@
+# Imagen base de Ubuntu 20.04
+FROM ubuntu:20.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# ==========================
+# Instalación de dependencias del sistema
+# ==========================
+RUN apt-get update && \
+    apt-get install -y software-properties-common && \
+    add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get update && \
+    apt-get install -y wget curl bc dc tcsh python3.10 python3.10-distutils python3.10-venv unzip git gcc g++ make cmake libstdc++6 \
+    libopenblas-dev xorg xvfb openbox imagemagick xdotool libgl1-mesa-glx libxrender1 libxtst6 \
+    libxcomposite1 libxss1 libxi6 libxrandr2 libxfixes3 libxdamage1 alsa-utils libgtk-3-0 dbus \
+    libcurl4-openssl-dev openssl ca-certificates libsm6 libice6 libpng-dev libjpeg-turbo8 \
+    libgtk2.0-0 libgtk-3-dev apt-transport-https libjpeg-dev zlib1g-dev libfreetype6-dev \
+    liblcms2-dev libopenjp2-7-dev libtiff5-dev libwebp-dev libharfbuzz-dev libfribidi-dev \
+    python3.10-dev build-essential gcc \
+    libgl1-mesa-dri mesa-utils libglu1-mesa libgl1-mesa-glx libosmesa6 && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# ==========================
+# Instalación de Google Chrome y ChromeDriver versión 134
+# ==========================
+RUN wget https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/134.0.6998.35/linux64/chrome-linux64.zip \
+  && unzip chrome-linux64.zip \
+  && mv chrome-linux64 /opt/chrome134 \
+  && ln -s /opt/chrome134/chrome /usr/bin/google-chrome \
+  && chmod +x /opt/chrome134/chrome
+
+RUN wget https://storage.googleapis.com/chrome-for-testing-public/134.0.6998.35/linux64/chromedriver-linux64.zip \
+  && unzip chromedriver-linux64.zip \
+  && mv chromedriver-linux64/chromedriver /usr/bin/chromedriver \
+  && chmod +x /usr/bin/chromedriver \
+  && rm -f chromedriver-linux64.zip
+
+ENV CHROME_BIN="/opt/chrome134/chrome"
+
+
+# ==========================
+# Instalación de FSL 6.0.7.5
+# ==========================
+WORKDIR /app
+
+# Configurar python3.10 como predeterminado
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
+
+# Instalar pip y setuptools actualizados para Python 3.10
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.10
+RUN python3 -m pip install --upgrade pip setuptools wheel
+
+# Verificar que python3 y pip estén en la versión correcta
+RUN python3 --version && pip --version
+
+# Instalar FSL
+RUN wget -O fslinstaller.py https://fsl.fmrib.ox.ac.uk/fsldownloads/fslconda/releases/fslinstaller.py && \
+    chmod +x fslinstaller.py && \
+    python3.10 fslinstaller.py --dest=/usr/local/fsl --quiet && \
+    rm fslinstaller.py
+
+# Configurar FSL en el entorno
+ENV FSLDIR=/usr/local/fsl
+ENV PATH=$FSLDIR/bin:$PATH
+ENV FSLOUTPUTTYPE=NIFTI_GZ
+RUN echo "source $FSLDIR/etc/fslconf/fsl.sh" >> /etc/profile.d/fsl.sh
+
+# ==========================
+# Instalación de Miniconda y Creación de fsl_env
+# ==========================
+# Descargar e instalar Miniconda
+RUN wget -O /tmp/miniconda.sh https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh && \
+    bash /tmp/miniconda.sh -b -p /opt/conda && \
+    rm /tmp/miniconda.sh
+
+# Agregar Conda al PATH
+ENV PATH="/opt/conda/bin:$PATH"
+
+# Crear el entorno fsl_env en Conda
+RUN conda create -y -n fsl_env python=3.9
+
+# Instalar OpenCV y dependencias en el entorno fsl_env
+RUN conda install -y -n fsl_env -c conda-forge opencv
+
+# Activar el entorno fsl_env por defecto en el contenedor
+RUN echo "source activate fsl_env" >> /root/.bashrc
+
+# ==========================
+# Instalación de dependencias de Python en fsl_env
+# ==========================
+COPY requirements_fsl.txt /app/requirements_fsl.txt
+
+# ==========================
+# Instalación de dependencias de Python en fsl_env
+# ==========================
+RUN /opt/conda/bin/conda run -n fsl_env pip install --no-cache-dir --upgrade \
+    "nibabel>=3.2,<5.0" \
+    "nilearn" \
+    "selenium" \
+    "opencv-python" \
+    "scikit-build" \
+    "cmake" \
+    "setuptools_scm"
+
+
+# Instalar las dependencias dentro del entorno fsl_env
+RUN /opt/conda/bin/conda run -n fsl_env python -m pip install --no-cache-dir --upgrade -r /app/requirements_fsl.txt
+RUN /opt/conda/bin/conda run -n fsl_env pip install --no-cache-dir PyOpenGL PyOpenGL_accelerate
+RUN apt-get update && apt-get install -y xserver-xorg-core xserver-xorg-video-dummy
+
+# Copiar los scripts al contenedor
+COPY . /app
+
+# ==========================
+# Comando por defecto
+# ==========================
+CMD ["/opt/conda/bin/conda", "run", "-n", "fsl_env", "python", "/app/main.py"]
