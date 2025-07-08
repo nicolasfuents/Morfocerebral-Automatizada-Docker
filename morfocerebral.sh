@@ -123,6 +123,28 @@ procesar_paciente() {
     fi
 
     echo "Procesamiento completo para $NOMBRE_PACIENTE"
+
+
+    PDF_REPORTE="$PACIENTE_DIR/dicom/FreeSurfer/stats/Reporte_morf.pdf"
+    EMAIL_DESTINO="fernando.icazatti@intecnus.org.ar nicolas.fuentes@intecnus.org.ar humberto.romano@intecnus.org.ar"
+    EMAIL_LOG="$PACIENTE_DIR/email_log.txt"
+
+    if [[ -f "$PDF_REPORTE" ]]; then
+        echo "Enviando reporte por email..."
+        eval docker run --rm \
+        -v "$PACIENTE_DIR":/data/paciente:ro \
+        morfocerebral:fsl \
+        bash -c "'source /opt/conda/etc/profile.d/conda.sh && \
+                  conda activate fsl_env && \
+                  python /app/send_email.py \"$NOMBRE_PACIENTE\" \"/data/paciente/dicom/FreeSurfer/stats/Reporte_morf.pdf\" $EMAIL_DESTINO'" \
+        >> "$EMAIL_LOG" 2>&1
+
+        echo "Resultado del envío registrado en $EMAIL_LOG"
+    else
+        echo "No se encontró el PDF del reporte."
+    fi
+
+
 }
 
 export -f procesar_paciente
