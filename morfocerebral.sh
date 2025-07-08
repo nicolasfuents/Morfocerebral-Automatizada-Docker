@@ -126,7 +126,7 @@ procesar_paciente() {
 
 
     PDF_REPORTE="$PACIENTE_DIR/dicom/FreeSurfer/stats/Reporte_morf.pdf"
-    EMAIL_DESTINO="fernando.icazatti@intecnus.org.ar nicolas.fuentes@intecnus.org.ar humberto.romano@intecnus.org.ar"
+    EMAIL_DESTINO="nicolas.fuentes@intecnus.org.ar"
     EMAIL_LOG="$PACIENTE_DIR/email_log.txt"
 
     if [[ -f "$PDF_REPORTE" ]]; then

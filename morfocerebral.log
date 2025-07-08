@@ -9841,7 +9841,8 @@ Eliminando archivo ZIP original: /home/nz8/volu_morfo/data/inputs/2.16.840.1.114
 Procesamiento completo para ACOSTA_TEODORO
 Procesando archivo: /home/nz8/volu_morfo/data/inputs/2.16.840.1.114584.2670157689.29440.16386.40783.50107218350946.zip
 Formato no reconocido. Ignorando.
-.2.840.113619.2.363.10499743.14163194.20930.1733137320.537.dcm
+tail: /tmp/job_queue/files_to_process.txt: file truncated
+.dcm
         Permission denied
 error:  cannot create /home/nz8/volu_morfo/data/inputs/2.16.840.1.114584.2670157689.29440.16386.40783.50107218350946_temp/1.2.840.113619.2.363.10499743.14163194.20930.1733137320.453.dcm
         Permission denied
@@ -10609,3 +10610,4 @@ permission denied while trying to connect to the Docker daemon socket at unix://
 grep: /home/nz8/volu_morfo/data/outputs//dicom/logs_FS_recon_all/log.txt: No such file or directory
 tee: /home/nz8/volu_morfo/data/outputs//fsl_log.txt: Permission denied
 rm: cannot remove '/home/nz8/volu_morfo/data/inputs/2.16.840.1.114584.2670157689.29440.16386.40783.50107218350946.zip': Permission denied
+tail: /tmp/job_queue/files_to_process.txt: file truncated

@@ -15,9 +15,11 @@ msg["Subject"] = f"Reporte Morfovolumétrico - {nombre_paciente}"
 msg["From"] = "neuroz8.pruebas@gmail.com"
 msg["To"] = ", ".join(destinatarios)
 msg.set_content(
-    f"Estimados,\n\n"
-    "Si recibieron este correo quiere decir que las volumetrías se están procesando y enviando vía email automáticamente desde la z8.\n\n"
-    f"A continuación, se adjunta el reporte morfovolumétrico generado para el paciente {nombre_paciente}."
+    f"Estimado/a,\n\n"
+    f"Le informamos que el procesamiento morfovolumétrico del paciente {nombre_paciente} se ha completado exitosamente.\n\n"
+    "Adjunto a este correo encontrará el reporte correspondiente generado automáticamente por el sistema.\n\n"
+    "Ante cualquier duda o inconveniente, por favor no dude en comunicarse con el equipo técnico.\n\n"
+    "Saludos cordiales,"
 )
 
 # Adjuntar PDF
