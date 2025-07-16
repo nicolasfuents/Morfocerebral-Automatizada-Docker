@@ -126,23 +126,31 @@ procesar_paciente() {
 
 
     PDF_REPORTE="$PACIENTE_DIR/dicom/FreeSurfer/stats/Reporte_morf.pdf"
-    EMAIL_DESTINO="nicolas.fuentes@intecnus.org.ar"
     EMAIL_LOG="$PACIENTE_DIR/email_log.txt"
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    MENSAJE_PATH="$SCRIPT_DIR/mensaje.txt"
+    DESTINATARIOS_PATH="$SCRIPT_DIR/destinatarios.txt"
 
     if [[ -f "$PDF_REPORTE" ]]; then
         echo "Enviando reporte por email..."
         eval docker run --rm \
         -v "$PACIENTE_DIR":/data/paciente:ro \
+        -v "$MENSAJE_PATH":/data/email/mensaje.txt:ro \
+        -v "$DESTINATARIOS_PATH":/data/email/destinatarios.txt:ro \
         morfocerebral:fsl \
         bash -c "'source /opt/conda/etc/profile.d/conda.sh && \
                   conda activate fsl_env && \
-                  python /app/send_email.py \"$NOMBRE_PACIENTE\" \"/data/paciente/dicom/FreeSurfer/stats/Reporte_morf.pdf\" $EMAIL_DESTINO'" \
+                  python /app/send_email.py \"$NOMBRE_PACIENTE\" \
+                  \"/data/paciente/dicom/FreeSurfer/stats/Reporte_morf.pdf\" \
+                  \"/data/email/mensaje.txt\" \
+                  \"/data/email/destinatarios.txt\"'" \
         >> "$EMAIL_LOG" 2>&1
 
         echo "Resultado del envío registrado en $EMAIL_LOG"
     else
         echo "No se encontró el PDF del reporte."
     fi
+
 
 
 }

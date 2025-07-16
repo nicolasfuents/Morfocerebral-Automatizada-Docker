@@ -5,28 +5,30 @@ import smtplib
 from email.message import EmailMessage
 from pathlib import Path
 
-# Argumentos
 nombre_paciente = sys.argv[1]
 reporte_path = Path(sys.argv[2])
-destinatarios = sys.argv[3:]
+mensaje_path = Path(sys.argv[3])
+destinatarios_path = Path(sys.argv[4])
+
+# Leer mensaje
+with open(mensaje_path, "r") as f:
+    mensaje = f.read()
+mensaje = mensaje.replace("{nombre_paciente}", nombre_paciente)
+
+
+# Leer destinatarios
+with open(destinatarios_path, "r") as f:
+    destinatarios = [line.strip() for line in f if line.strip()]
 
 msg = EmailMessage()
 msg["Subject"] = f"Reporte Morfovolumétrico - {nombre_paciente}"
 msg["From"] = "neuroz8.pruebas@gmail.com"
 msg["To"] = ", ".join(destinatarios)
-msg.set_content(
-    f"Estimado/a,\n\n"
-    f"Le informamos que el procesamiento morfovolumétrico del paciente {nombre_paciente} se ha completado exitosamente.\n\n"
-    "Adjunto a este correo encontrará el reporte correspondiente generado automáticamente por el sistema.\n\n"
-    "Ante cualquier duda o inconveniente, por favor no dude en comunicarse con el equipo técnico.\n\n"
-    "Saludos cordiales,"
-)
+msg.set_content(mensaje)
 
-# Adjuntar PDF
 with open(reporte_path, "rb") as f:
     msg.add_attachment(f.read(), maintype="application", subtype="pdf", filename=reporte_path.name)
 
-# Configuración SMTP (Gmail)
 smtp_server = "smtp.gmail.com"
 smtp_port = 587
 smtp_user = "neuroz8.pruebas@gmail.com"
