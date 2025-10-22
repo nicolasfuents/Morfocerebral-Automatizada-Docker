@@ -13488,9 +13488,11 @@ Reporte NO generado para
 Eliminando archivo ZIP original: /home/nz8/volu_morfo/data/inputs/2.16.840.1.114584.2716317982.43288.18848.34384.198941743669239.zip
 Procesamiento completo para 
 rm: cannot remove '/home/nz8/volu_morfo/data/inputs/2.16.840.1.114584.2716317982.43288.18848.34384.198941743669239.zip': Permission denied
-94.14788.1743419309.577.dcm  
-  inflating: /home/nz8/volu_morfo/data/inputs/2.16.840.1.114584.2716317982.43288.18848.34384.198941743669239_temp/1.2.840.113619.2.363.10499743.14163194.14788.1743419309.557.dcm  
-  inflating: /home/nz8/volu_morfo/data/inputs/2.16.840.1.114584.2716317982.43288.18848.34384.198941743669239_temp/1.2.840.113619.2.363.10499743.14163194.14788.1743419309.491.dcm  
+tail: /tmp/job_queue/files_to_process.txt: file truncated
+parallel: SIGHUP received. No new jobs will be started.
+parallel: Waiting for these 1 jobs to finish. Send SIGTERM to stop now.
+parallel: procesar_paciente /home/nz8/volu_morfo/data/inputs/2.16.840.1.114584.2716317982.43288.18848.34384.198941743669239.zip
+9239_temp/1.2.840.113619.2.363.10499743.14163194.14788.1743419309.491.dcm  
   inflating: /home/nz8/volu_morfo/data/inputs/2.16.840.1.114584.2716317982.43288.18848.34384.198941743669239_temp/1.2.840.113619.2.363.10499743.14163194.14788.1743419309.502.dcm  
   inflating: /home/nz8/volu_morfo/data/inputs/2.16.840.1.114584.2716317982.43288.18848.34384.198941743669239_temp/1.2.840.113619.2.363.10499743.14163194.14788.1743419309.414.dcm  
   inflating: /home/nz8/volu_morfo/data/inputs/2.16.840.1.114584.2716317982.43288.18848.34384.198941743669239_temp/1.2.840.113619.2.363.10499743.14163194.14788.1743419309.538.dcm  
@@ -14149,3 +14151,8 @@ Verificando si se generó el reporte PDF...
 Reporte NO generado para CARRASCO_RODRIGUEZ_DIEGO
 Eliminando archivo ZIP original: /home/nz8/volu_morfo/data/inputs/2.16.840.1.114584.2716317982.43288.18848.34384.198941743669239.zip
 Procesamiento completo para CARRASCO_RODRIGUEZ_DIEGO
+tail: /tmp/job_queue/files_to_process.txt: file truncated
+parallel: SIGHUP received. No new jobs will be started.
+parallel: Waiting for these 2 jobs to finish. Send SIGTERM to stop now.
+parallel: procesar_paciente /home/nz8/volu_morfo/data/inputs/2.16.840.1.114584.2716317982.43288.18848.34384.198941743669239.zip
+parallel: procesar_paciente /home/nz8/volu_morfo/data/inputs/2.16.840.1.114584.2716317982.43288.18848.34384.198941743669239.zip

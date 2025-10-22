@@ -4,6 +4,4 @@ Le informamos que el procesamiento morfovolumétrico de {nombre_paciente} se ha 
 
 Adjunto a este correo encontrará el reporte correspondiente generado por el sistema.
 
-Ante cualquier duda o inconveniente, por favor no dude en comunicarse con el soporte técnico.
-
 Saludos cordiales,

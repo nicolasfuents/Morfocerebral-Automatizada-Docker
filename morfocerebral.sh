@@ -75,7 +75,7 @@ procesar_paciente() {
     echo "Esperando 10 segundos antes de iniciar el procesamiento..."
     sleep 10
 
-    CONTAINER_NAME="fs_paciente_${NOMBRE_PACIENTE//[^a-zA-Z0-9]/_}"
+    CONTAINER_NAME="fs_paciente_${NOMBRE_PACIENTE//[^a-zA-Z0-9]/_}_$(date +%s%N)"
     LOG_PATH="$PACIENTE_DIR/freesurfer_log.txt"
 
     echo "Iniciando procesamiento con FreeSurfer... (contenedor: $CONTAINER_NAME)"
@@ -100,6 +100,27 @@ procesar_paciente() {
     SUBJECTS_DIR=$(grep "SUBJECTS_DIR configurado en:" "$PACIENTE_DIR/dicom/logs_FS_recon_all/log.txt" | awk '{print $4}')
     echo "SUBJECTS_DIR obtenido: $SUBJECTS_DIR"
 
+    #######################################################################
+    # NUEVO: localizar FreeSurfer en profundidad y derivar rutas dinámicas
+    #######################################################################
+    # FS_DIR: carpeta FreeSurfer más reciente bajo $PACIENTE_DIR/dicom
+    FS_DIR="$(find "$PACIENTE_DIR/dicom" -type d -name FreeSurfer -printf '%T@ %p\n' | sort -nr | head -n1 | cut -d' ' -f2-)"
+    if [[ -z "$FS_DIR" ]]; then
+        echo "No se encontró carpeta FreeSurfer dentro de $PACIENTE_DIR/dicom"
+        return
+    fi
+    # DICOM_ROOT: padre inmediato de FreeSurfer (lo que espera FSL como --dicom_dir)
+    DICOM_ROOT="$(cd "$FS_DIR/.." >/dev/null && pwd)"
+    # Rutas equivalentes dentro del contenedor
+    REL_PATH="${DICOM_ROOT#$PACIENTE_DIR}"
+    DICOM_ROOT_CONT="/data/paciente${REL_PATH}"
+    PDF_REPORTE_HOST="$FS_DIR/stats/Reporte_morf.pdf"
+    PDF_REPORTE_CONT="${PDF_REPORTE_HOST/$PACIENTE_DIR/\/data\/paciente}"
+
+    echo "FreeSurfer detectado: $FS_DIR"
+    echo "DICOM_ROOT para FSL:  $DICOM_ROOT"
+    #######################################################################
+
     echo "Iniciando procesamiento con FSL..."
     LOG_FSL="$PACIENTE_DIR/fsl_log.txt"
 
@@ -107,11 +128,11 @@ procesar_paciente() {
         -v "$PACIENTE_DIR":/data/paciente:rw \
         morfocerebral:fsl bash -c '
             source /opt/conda/etc/profile.d/conda.sh && conda activate fsl_env && \
-            python3 /app/main_fsl.py --skip_fs --dicom_dir /data/paciente/dicom' \
+            python3 /app/main_fsl.py --skip_fs --dicom_dir '"$DICOM_ROOT_CONT" \
         2>&1 | tee "$LOG_FSL"
 
     echo "Verificando si se generó el reporte PDF..."
-    if [[ -f "$PACIENTE_DIR/dicom/FreeSurfer/stats/Reporte_morf.pdf" ]]; then
+    if [[ -f "$PDF_REPORTE_HOST" ]]; then
         echo "Reporte generado correctamente para $NOMBRE_PACIENTE"
     else
         echo "Reporte NO generado para $NOMBRE_PACIENTE"
@@ -124,8 +145,7 @@ procesar_paciente() {
 
     echo "Procesamiento completo para $NOMBRE_PACIENTE"
 
-
-    PDF_REPORTE="$PACIENTE_DIR/dicom/FreeSurfer/stats/Reporte_morf.pdf"
+    PDF_REPORTE="$PDF_REPORTE_HOST"
     EMAIL_LOG="$PACIENTE_DIR/email_log.txt"
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     MENSAJE_PATH="$SCRIPT_DIR/mensaje.txt"
@@ -141,7 +161,7 @@ procesar_paciente() {
         bash -c "'source /opt/conda/etc/profile.d/conda.sh && \
                   conda activate fsl_env && \
                   python /app/send_email.py \"$NOMBRE_PACIENTE\" \
-                  \"/data/paciente/dicom/FreeSurfer/stats/Reporte_morf.pdf\" \
+                  \"$PDF_REPORTE_CONT\" \
                   \"/data/email/mensaje.txt\" \
                   \"/data/email/destinatarios.txt\"'" \
         >> "$EMAIL_LOG" 2>&1
@@ -150,9 +170,6 @@ procesar_paciente() {
     else
         echo "No se encontró el PDF del reporte."
     fi
-
-
-
 }
 
 export -f procesar_paciente
@@ -169,5 +186,9 @@ inotifywait -m -e close_write,moved_to --format '%w%f' "$WATCH_DIR" | while read
     fi
 
     echo "Detectado nuevo archivo finalizado: $NEWFILE"
-    echo "$NEWFILE" >> "$QUEUE_FILE"
+    if ! grep -Fxq "$NEWFILE" "$QUEUE_FILE"; then
+        echo "$NEWFILE" >> "$QUEUE_FILE"
+    else
+        echo "Archivo ya en cola: $NEWFILE"
+    fi
 done

@@ -45,11 +45,11 @@ def generate_parcelation_plot(dicom_dir, subjects_dir):
 
     # Lanzar Xvfb
     xvfb_process = subprocess.Popen(["Xvfb", ":99", "-screen", "0", "1720x900x24"])
-    time.sleep(10)
+    time.sleep(20)
 
     env = dict(os.environ, DISPLAY=":99", GTK_IM_MODULE="none")
     openbox_process = subprocess.Popen(["openbox"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    time.sleep(10)
+    time.sleep(20)
 
     # --------------------------
     # Primera ejecución: aparc.DKTatlas+aseg.mgz
@@ -64,11 +64,11 @@ def generate_parcelation_plot(dicom_dir, subjects_dir):
     ]
 
     freeview_proc_1 = subprocess.Popen(freeview_cmd_1, env=env)
-    time.sleep(30)
+    time.sleep(40)
     subprocess.run(['wmctrl', '-r', 'freeview', '-b', 'add,maximized_vert,maximized_horz'], env=env)
-    time.sleep(10)
+    time.sleep(20)
     subprocess.run(['xdotool', 'key', 'alt+1'], env=env)
-    time.sleep(7)
+    time.sleep(10)
 
     capture_xvfb(output_path=output_screenshot_1, crop_coords=(310, None, 495, 703))
 
@@ -89,11 +89,11 @@ def generate_parcelation_plot(dicom_dir, subjects_dir):
     ]
 
     freeview_proc_2 = subprocess.Popen(freeview_cmd_2, env=env)
-    time.sleep(30)
+    time.sleep(40)
     subprocess.run(['wmctrl', '-r', 'freeview', '-b', 'add,maximized_vert,maximized_horz'], env=env)
-    time.sleep(10)
+    time.sleep(20)
     subprocess.run(['xdotool', 'key', 'alt+1'], env=env)
-    time.sleep(7)
+    time.sleep(10)
 
     capture_xvfb(output_path=output_screenshot_2, crop_coords=(310, 1700, 202, 410))  # Más arriba
 
