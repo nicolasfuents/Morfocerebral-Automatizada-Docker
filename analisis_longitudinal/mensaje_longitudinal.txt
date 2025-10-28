@@ -1,0 +1,7 @@
+Estimado/a,
+
+Le informamos que el procesamiento volumétrico longitudinal de {nombre_paciente} se ha completado exitosamente.
+
+Adjunto a este correo encontrará el reporte correspondiente generado por el sistema.
+
+Saludos cordiales,
