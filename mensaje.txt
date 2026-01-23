@@ -2,6 +2,6 @@ Estimado/a,
 
 Le informamos que el procesamiento morfovolumétrico de {nombre_paciente} se ha completado exitosamente.
 
-Adjunto a este correo encontrará el reporte correspondiente generado por el sistema.
+Adjunto a este correo encontrará los reportes correspondientes generados por el sistema.
 
 Saludos cordiales,
