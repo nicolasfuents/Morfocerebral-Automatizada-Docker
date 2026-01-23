@@ -1,36 +1,57 @@
 #!/usr/bin/env python3
-import os, argparse
+import os, argparse, sys
+import matplotlib
+# FIX: Backend no interactivo para evitar crash en Docker/Servidores
+matplotlib.use('Agg') 
+import matplotlib.pyplot as plt
 import pydicom
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
-from datetime import datetime
 from PIL import Image
 import img2pdf
 
-# ---------- utilidades ----------
+# ---------- UTILIDADES ----------
+def detectar_carpeta_surfer(root_path):
+    """Busca FastSurfer o FreeSurfer indistintamente."""
+    for candidate in ['FastSurfer', 'FreeSurfer']:
+        path = os.path.join(root_path, candidate)
+        if os.path.exists(path):
+            return path
+    # Si no encuentra, asume estructura directa o falla controladamente
+    return None
+
 def leer_datos_volumenes(archivo):
+    if not os.path.exists(archivo):
+        raise FileNotFoundError(f"No se encuentra el archivo: {archivo}")
     return pd.read_csv(archivo, header=None, names=['Measure:volume','Volumen'], sep='\t')
 
 def obtener_anio_estudio(dicom_file):
-    ds = pydicom.dcmread(dicom_file, stop_before_pixels=True, force=True)
-    da = str(getattr(ds, "StudyDate", ""))[:4]
-    return da if len(da)==4 else "XXXX"
+    if not dicom_file: return "XXXX"
+    try:
+        ds = pydicom.dcmread(dicom_file, stop_before_pixels=True, force=True)
+        da = str(getattr(ds, "StudyDate", ""))[:4]
+        return da if len(da)==4 else "XXXX"
+    except:
+        return "XXXX"
 
 def obtener_nombre_paciente(dicom_file):
-    ds = pydicom.dcmread(dicom_file, stop_before_pixels=True, force=True)
-    name = str(getattr(ds, "PatientName", "PACIENTE")).strip()
-    safe = "".join(c if c.isalnum() or c in "._-" else "_" for c in name)
-    return safe or "PACIENTE"
+    if not dicom_file: return "PACIENTE"
+    try:
+        ds = pydicom.dcmread(dicom_file, stop_before_pixels=True, force=True)
+        name = str(getattr(ds, "PatientName", "PACIENTE")).strip()
+        safe = "".join(c if c.isalnum() or c in "._-" else "_" for c in name)
+        return safe or "PACIENTE"
+    except:
+        return "PACIENTE"
 
 def solicitar_archivo_dicom(directorio):
     for root, _, files in os.walk(directorio):
         for f in files:
             if f.lower().endswith(".dcm"):
                 return os.path.join(root, f)
-    raise FileNotFoundError(f"No se encontró DICOM en {directorio}")
+    return None
 
 def calcular_volumenes_sujeto(datos):
     regiones_interes = [
@@ -39,8 +60,11 @@ def calcular_volumenes_sujeto(datos):
         'CC_Posterior','CC_Mid_Posterior','CC_Central','CC_Mid_Anterior','CC_Anterior',
         'Left-Hippocampus','Right-Hippocampus','CerebralWhiteMatterVol','TotalGrayVol'
     ]
-    v = {r: float(datos.loc[datos['Measure:volume']==r,'Volumen'].values[0]) if not datos.loc[datos['Measure:volume']==r].empty else 0.0
-         for r in regiones_interes}
+    v = {}
+    for r in regiones_interes:
+        row = datos.loc[datos['Measure:volume']==r]
+        v[r] = float(row['Volumen'].values[0]) if not row.empty else 0.0
+
     out = {
         'Cerebelo': v['Left-Cerebellum-White-Matter']+v['Left-Cerebellum-Cortex']+
                     v['Right-Cerebellum-White-Matter']+v['Right-Cerebellum-Cortex'],
@@ -53,10 +77,8 @@ def calcular_volumenes_sujeto(datos):
 
 def ensure_dir(p): Path(p).mkdir(parents=True, exist_ok=True)
 
-# ---------- gráficos ----------
-def dibujar_pentagono(vol_ctrl, vol_suj, out_png, dicom_antiguo, dicom_reciente):
-    anio_ant = obtener_anio_estudio(dicom_antiguo)
-    anio_rec = obtener_anio_estudio(dicom_reciente)
+# ---------- GRÁFICOS ----------
+def dibujar_pentagono(vol_ctrl, vol_suj, out_png, anio_ant, anio_rec):
     labels = list(vol_ctrl.keys())
     vals_norm = {k: (vol_suj[k]/vol_ctrl[k] if vol_ctrl[k]!=0 else 0) for k in labels}
 
@@ -72,10 +94,10 @@ def dibujar_pentagono(vol_ctrl, vol_suj, out_png, dicom_antiguo, dicom_reciente)
         fig, ax = plt.subplots(figsize=(6,6), subplot_kw=dict(polar=True))
         for a in ang[:-1]:
             ax.plot([a,a],[0,1.3], color='white', linestyle='dotted', linewidth=2)
-        ax.plot(ang, vals_ctrl, color='#6C6D6E', linewidth=2, label=f'Volúmenes {anio_ant}')
+        ax.plot(ang, vals_ctrl, color='#6C6D6E', linewidth=2, label=f'Vol {anio_ant}')
         ax.plot(ang, vals_outer, color='#dadddb', linewidth=3)
         ax.fill(ang, vals_outer, color='white', alpha=1)
-        ax.plot(ang, vals_suj, color='#ffd966', linewidth=2, label=f'Volúmenes {anio_rec}')
+        ax.plot(ang, vals_suj, color='#ffd966', linewidth=2, label=f'Vol {anio_rec}')
         ax.fill(ang, vals_suj, color='#ffd966', alpha=0.15)
 
         ax.yaxis.set_visible(False); ax.spines['polar'].set_visible(False)
@@ -88,89 +110,104 @@ def dibujar_pentagono(vol_ctrl, vol_suj, out_png, dicom_antiguo, dicom_reciente)
         for t in leg.get_texts(): t.set_color("gray")
         fig.savefig(out_png, dpi=300, bbox_inches='tight'); plt.close(fig)
 
-def dibujar_heatmap(vol_ctrl, vol_suj, out_png, dicom_antiguo, dicom_reciente):
-    anio_ant = obtener_anio_estudio(dicom_antiguo)
-    anio_rec = obtener_anio_estudio(dicom_reciente)
+def dibujar_heatmap(vol_ctrl, vol_suj, out_png, anio_ant, anio_rec):
     cats = list(vol_ctrl.keys())
     data = np.array([list(vol_ctrl.values()), list(vol_suj.values())])
     with plt.style.context('default'):
         fig, ax = plt.subplots(figsize=(10,4))
-        sns.heatmap(data, annot=True, cmap='YlGnBu',
-                    xticklabels=cats, yticklabels=[f'Volúmenes {anio_ant}', f'Volúmenes {anio_rec}'],
-                    ax=ax, vmin=0, vmax=float(data.max()))
-        plt.title('Comparación de Volúmenes (%VIT)', color='gray')
-        for l in ax.get_xticklabels(): l.set_color('gray')
-        for l in ax.get_yticklabels(): l.set_color('gray')
+        sns.heatmap(data, annot=True, cmap='YlGnBu', fmt='.1f',
+                    xticklabels=cats, yticklabels=[f'Vol {anio_ant}', f'Vol {anio_rec}'],
+                    ax=ax)
+        plt.title('Comparación de Volúmenes (mm3)', color='gray')
         fig.savefig(out_png, dpi=300, bbox_inches='tight'); plt.close(fig)
 
-def dibujar_diferencias(vol_xlsx_ant, vol_xlsx_rec, out_png):
+def dibujar_diferencias(xlsx_old, xlsx_new, out_png):
     sns.set(style="darkgrid")
-    va = pd.read_excel(vol_xlsx_ant)
-    vr = pd.read_excel(vol_xlsx_rec)
-    assert (va['Regiones_ESP'] == vr['Regiones_ESP']).all(), "Regiones no coinciden"
-    va = va.copy()
-    va['Diferencia_%VIT'] = vr['Volumen_%VIT'] - va['Volumen_%VIT']
-    cambios = va[va['Diferencia_%VIT'] != 0]
+    if not os.path.exists(xlsx_old) or not os.path.exists(xlsx_new):
+        print("Aviso: No se encontraron excels de volumetría para diferencias.")
+        return
+
+    va = pd.read_excel(xlsx_old)
+    vr = pd.read_excel(xlsx_new)
+    
+    # Merge robusto
+    merged = pd.merge(va, vr, on="Regiones_ESP", suffixes=('_old', '_new'))
+    merged['Diferencia_%VIT'] = merged['Volumen_%VIT_new'] - merged['Volumen_%VIT_old']
+    cambios = merged[merged['Diferencia_%VIT'] != 0]
+
+    if cambios.empty: return
+
     fig, ax = plt.subplots(figsize=(10,8))
     sns.barplot(x="Diferencia_%VIT", y="Regiones_ESP", data=cambios,
                 palette=sns.diverging_palette(220, 20, as_cmap=False), ci=None, ax=ax)
     plt.axvline(0, color='gray', linewidth=0.8)
-    plt.xlabel('Diferencia de Volumen (%VIT)', color='gray', fontsize=10); plt.ylabel('', color='gray')
-    plt.xticks(color='gray'); plt.yticks(color='gray', fontsize=8)
-    plt.grid(True, axis='x', linestyle='-', color='white', linewidth=0.5)
-    plt.grid(True, axis='y', linestyle='-', color='white', linewidth=0.5)
-    txt = ("Cómo leerlo:\n- Cerca de 0: sin cambio relevante.\n"
-           "- Negativo: reducción de volumen.\n- Positivo: aumento de volumen.\n")
-    props = dict(boxstyle='round,pad=0.5', edgecolor='gray', facecolor='white', alpha=0.85)
-    ax.text(0.2, 0.7, txt, transform=ax.transAxes, fontsize=8, va='top', bbox=props, color="black")
+    plt.xlabel('Diferencia (%VIT)', color='gray')
     plt.tight_layout()
     fig.savefig(out_png, dpi=300, bbox_inches='tight'); plt.close(fig)
 
 def export_pdf(img_paths, pdf_path):
     imgs = []
     for p in img_paths:
-        im = Image.open(p)
-        if im.mode != "RGB": im = im.convert("RGB")
-        im.save(p)  # asegurar RGB persistente
-        imgs.append(p)
-    with open(pdf_path, "wb") as f:
-        f.write(img2pdf.convert(imgs))
+        if os.path.exists(p):
+            im = Image.open(p).convert("RGB")
+            im.save(p)
+            imgs.append(p)
+    if imgs:
+        with open(pdf_path, "wb") as f:
+            f.write(img2pdf.convert(imgs))
 
-# ---------- main ----------
+# ---------- MAIN ----------
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--old", required=True, help="Carpeta estudio antiguo (contiene FreeSurfer)")
-    ap.add_argument("--new", required=True, help="Carpeta estudio reciente (contiene FreeSurfer)")
-    ap.add_argument("--outroot", required=True, help="Raíz de salida analisis_longitudinales")
+    ap.add_argument("--old", required=True)
+    ap.add_argument("--new", required=True)
+    ap.add_argument("--outroot", required=True)
     args = ap.parse_args()
 
-    dir_old, dir_new = args.old, args.new
-    dicom_old = solicitar_archivo_dicom(dir_old)
-    dicom_new = solicitar_archivo_dicom(dir_new)
-    paciente = obtener_nombre_paciente(dicom_new)  # usa el más reciente
+    # Detectar carpetas FS (FastSurfer o FreeSurfer)
+    fs_old = detectar_carpeta_surfer(args.old)
+    fs_new = detectar_carpeta_surfer(args.new)
+
+    if not fs_old or not fs_new:
+        print(f"Error: No se encontró FastSurfer/FreeSurfer en {args.old} o {args.new}")
+        sys.exit(1)
+
+    # Buscar DICOMs para metadatos
+    dicom_old = solicitar_archivo_dicom(args.old)
+    dicom_new = solicitar_archivo_dicom(args.new)
+    
+    paciente = obtener_nombre_paciente(dicom_new)
+    anio_ant = obtener_anio_estudio(dicom_old)
+    anio_rec = obtener_anio_estudio(dicom_new)
+
     out_dir = os.path.join(args.outroot, paciente)
     ensure_dir(out_dir)
 
-    aseg_old = os.path.join(dir_old, 'FreeSurfer','stats','aseg_stats_etiv.txt')
-    aseg_new = os.path.join(dir_new, 'FreeSurfer','stats','aseg_stats_etiv.txt')
+    print(f"Analizando: {paciente} ({anio_ant} vs {anio_rec})")
+    
+    # Rutas Stats
+    aseg_old = os.path.join(fs_old, 'stats', 'aseg_stats_etiv.txt')
+    aseg_new = os.path.join(fs_new, 'stats', 'aseg_stats_etiv.txt')
+    
     vol_old = calcular_volumenes_sujeto(leer_datos_volumenes(aseg_old))
     vol_new = calcular_volumenes_sujeto(leer_datos_volumenes(aseg_new))
 
-    xlsx_old = os.path.join(dir_old, 'FreeSurfer','stats','volumetria.xlsx')
-    xlsx_new = os.path.join(dir_new, 'FreeSurfer','stats','volumetria.xlsx')
+    # Graficar
+    png_pent = os.path.join(out_dir, 'pentagono.png')
+    png_heat = os.path.join(out_dir, 'heatmap.png')
+    png_diff = os.path.join(out_dir, 'diff.png')
+    
+    xlsx_old = os.path.join(fs_old, 'stats', 'volumetria.xlsx')
+    xlsx_new = os.path.join(fs_new, 'stats', 'volumetria.xlsx')
 
-    png_pent = os.path.join(out_dir, 'comparacion_longitudinal_pentagono.png')
-    png_heat = os.path.join(out_dir, 'comparacion_longitudinal_heatmap.png')
-    png_diff = os.path.join(out_dir, 'comparacion_diferencias_volumenes.png')
-
-    dibujar_pentagono(vol_old, vol_new, png_pent, dicom_old, dicom_new)
-    dibujar_heatmap(vol_old, vol_new, png_heat, dicom_old, dicom_new)
+    dibujar_pentagono(vol_old, vol_new, png_pent, anio_ant, anio_rec)
+    dibujar_heatmap(vol_old, vol_new, png_heat, anio_ant, anio_rec)
     dibujar_diferencias(xlsx_old, xlsx_new, png_diff)
 
+    # PDF
     pdf_path = os.path.join(out_dir, f"reporte_longitudinal_{paciente}.pdf")
     export_pdf([png_pent, png_heat, png_diff], pdf_path)
-
-    print(f"[OK] PNGs y PDF en: {out_dir}")
+    print(f"[OK] PDF generado: {pdf_path}")
 
 if __name__ == "__main__":
     main()

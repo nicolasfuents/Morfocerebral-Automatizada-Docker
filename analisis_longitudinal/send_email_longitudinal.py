@@ -10,6 +10,9 @@ reporte_path = Path(sys.argv[2])        # Ruta del PDF longitudinal
 mensaje_path = Path(sys.argv[3])        # Plantilla del mensaje
 destinatarios_path = Path(sys.argv[4])  # Lista de destinatarios
 
+# Capturamos todos los argumentos extra (reportes adicionales)
+reportes_extra = sys.argv[5:]
+
 # --- Leer mensaje base ---
 with open(mensaje_path, "r") as f:
     mensaje = f.read()
@@ -29,7 +32,7 @@ msg["From"] = "neuroz8.pruebas@gmail.com"
 msg["To"] = ", ".join(destinatarios)
 msg.set_content(mensaje)
 
-# --- Adjuntar el PDF ---
+# --- Adjuntar el PDF Principal (Longitudinal) ---
 with open(reporte_path, "rb") as f:
     msg.add_attachment(
         f.read(),
@@ -37,6 +40,18 @@ with open(reporte_path, "rb") as f:
         subtype="pdf",
         filename=reporte_path.name
     )
+
+# --- Adjuntar Reportes Extra (Si existen) ---
+for reporte_extra in reportes_extra:
+    path_extra = Path(reporte_extra)
+    if path_extra.exists():
+        with open(path_extra, "rb") as f:
+            msg.add_attachment(
+                f.read(),
+                maintype="application",
+                subtype="pdf",
+                filename=path_extra.name
+            )
 
 # --- Envío SMTP ---
 smtp_server = "smtp.gmail.com"
@@ -49,4 +64,4 @@ with smtplib.SMTP(smtp_server, smtp_port) as server:
     server.login(smtp_user, smtp_pass)
     server.send_message(msg)
 
-print(f"Correo longitudinal enviado correctamente a {', '.join(destinatarios)}.")
+print(f"Correo longitudinal enviado correctamente a {', '.join(destinatarios)} con {len(reportes_extra)} adjuntos adicionales.")
