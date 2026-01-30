@@ -1,4 +1,4 @@
-# Análisis Morfovolumétrico Cerebral Automatizado a partir de Imágenes T1w
+# Análisis Morfovolumétrico Cerebral Automatizado a partir de Imágenes T1-w
 
 Este software implementa un pipeline completo para el procesamiento de estudios cerebrales estructurales (T1-w) de forma automatizada. Diseñado para operar dentro de contenedores Docker, el sistema garantiza máxima portabilidad y reproducibilidad en entornos clínicos y de investigación.
 
